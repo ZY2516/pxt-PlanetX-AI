@@ -74,12 +74,12 @@ PlanetX_AILens.objectConfidence(PlanetX_AILens.learnID.ID1)
 
 ## AI Lens Pro
 
-AI Lens Pro blocks use the `PlanetX_AILensPro` namespace and are available in the `AI Lens Pro` subcategory.
+AI Lens Pro blocks use the `PlanetX_AILens` namespace and are available in the `AI Lens Pro` subcategory.
 
 ```JavaScript
-PlanetX_AILensPro.initAiLensPro()
-PlanetX_AILensPro.switchApp(PlanetX_AILensPro.AppMode.FaceRecognize)
-PlanetX_AILensPro.getOneFrame()
+PlanetX_AILens.initAiLensPro()
+PlanetX_AILens.switchApp(PlanetX_AILens.AppMode.FaceRecognize)
+PlanetX_AILens.getOneFrame()
 ```
 
 ## ASR

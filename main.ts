@@ -1,5 +1,5 @@
 /**
- * This extension is designed to programme and drive the Smart AI Lens(二郎神)
+ * This extension is designed to programme and drive the Smart AI Lens.
  */
 //% color=#0031AF icon="\uf06e" 
 //% groups='["Basic", "Ball", "Face", "Card", "Color", "Tracking", "Learn", "Basic settings", "Ball recognition", "Card recognition", "Color recognition", "Face recognition", "Expression recognition", "Gesture recognition", "Posture recognition", "Object recognition", "Object tracking", "Line recognition", "OCR", "Self learning", "Rhythm recognition", "IIC Port"]'
@@ -713,8 +713,7 @@ namespace PlanetX_AILens {
 /************************************************************************
  * AI Lens Pro
  ************************************************************************/
-//% color=#1C7ED6 blockNamespace=PlanetX_AILens
-namespace PlanetX_AILensPro {
+namespace PlanetX_AILens {
     const UDEV_DEVICE_ADDR_DEFAULT = 0x60;
 
     const UART_CMD_SOUND_TOUCH_CTRL = 0x38;
@@ -746,7 +745,9 @@ namespace PlanetX_AILensPro {
     const EXPRESSION_MAX_LABEL_BYTES = 12;
     const POSTURE_RESULT_HEAD_LEN = 4;
     const POSTURE_TARGET_STRIDE = 79;
-    const POSTURE_MAX_PEOPLE = 3;
+    const POSTURE_RECORD_HEAD_LEN = POSTURE_TARGET_STRIDE + 1;
+    const POSTURE_MAX_LABEL_BYTES = 24;
+    const POSTURE_MAX_PEOPLE = 1;
     const COLOR_MODE_LEARN = 0;
     const COLOR_MODE_RECOGNIZE = 1;
     const COLOR_RECOGNIZE_HEAD_LEN = 7;
@@ -830,6 +831,7 @@ namespace PlanetX_AILensPro {
     let postureCountCache = 0;
     let postureRecordCountCache = 0;
     let postureTargetsCache = pins.createBuffer(0);
+    let postureLabelsCache: string[] = [];
     let colorModeCache = COLOR_MODE_LEARN;
     let colorCountCache = 0;
     let colorRecordCountCache = 0;
@@ -1732,8 +1734,8 @@ namespace PlanetX_AILensPro {
             return false;
         }
 
-        // u_device param_len 为 1 字节，0x30 透传参数格式 [0, frame_len, frame...]
-        // 所以要求 2 + frame_len <= 255，即 frame_len <= 253
+        // u_device uses a one-byte param_len. Command 0x30 carries [0, frame_len, frame...].
+        // Therefore 2 + frame_len must not exceed 255, so frame_len is limited to 253.
         if (frame.length > 253) {
             return false;
         }
@@ -2320,14 +2322,14 @@ namespace PlanetX_AILensPro {
         const target = mode as number;
         const totalAttempts = 1 + maxNumber(0, retryAfterFirst | 0);
 
-        // 已在目标模式时直接返回，避免重复切换导致阻塞。
+        // Return immediately when the device is already in the target mode.
         const currentId = tryReadModeId(2);
         if (currentId == (target & 0xFF)) {
             currentMode = mode;
             return true;
         }
 
-        // 读取失败时回退到缓存模式，降低"已在目标模式但卡住等待"的概率。
+        // Fall back to the cached mode when the device mode cannot be read.
         if (currentId < 0 && ((currentMode as number) & 0xFF) == (target & 0xFF)) {
             return true;
         }
@@ -2654,6 +2656,7 @@ namespace PlanetX_AILensPro {
             postureCountCache = 0;
             postureRecordCountCache = 0;
             postureTargetsCache = pins.createBuffer(0);
+            postureLabelsCache = [];
             return false;
         }
 
@@ -2664,11 +2667,12 @@ namespace PlanetX_AILensPro {
         recordCount = minNumber(recordCount, POSTURE_MAX_PEOPLE);
 
         const targets = pins.createBuffer(recordCount * POSTURE_TARGET_STRIDE);
+        const labels: string[] = [];
         let offset = POSTURE_RESULT_HEAD_LEN;
         let parsedCount = 0;
 
         for (let i = 0; i < recordCount; i++) {
-            if (offset + POSTURE_TARGET_STRIDE > raw.length) {
+            if (offset + POSTURE_RECORD_HEAD_LEN > raw.length) {
                 break;
             }
 
@@ -2676,12 +2680,25 @@ namespace PlanetX_AILensPro {
             for (let j = 0; j < POSTURE_TARGET_STRIDE; j++) {
                 targets[out + j] = raw[offset + j] & 0xFF;
             }
-            offset += POSTURE_TARGET_STRIDE;
+
+            let labelLen = raw[offset + POSTURE_TARGET_STRIDE] & 0xFF;
+            if (labelLen > POSTURE_MAX_LABEL_BYTES) {
+                labelLen = POSTURE_MAX_LABEL_BYTES;
+            }
+            offset += POSTURE_RECORD_HEAD_LEN;
+
+            if (offset + labelLen > raw.length) {
+                break;
+            }
+
+            labels.push(labelLen > 0 ? utf8DecodePart(raw, offset, labelLen) : "");
+            offset += labelLen;
             parsedCount += 1;
         }
 
         postureRecordCountCache = parsedCount;
         postureTargetsCache = targets;
+        postureLabelsCache = labels;
         return true;
     }
 
@@ -3048,7 +3065,8 @@ namespace PlanetX_AILensPro {
         if (offset < 0) {
             return "";
         }
-        return postureTypeName((postureTargetsCache[offset + 1] & 0xFF) as PostureType);
+        const index = (offset / POSTURE_TARGET_STRIDE) | 0;
+        return index < postureLabelsCache.length ? postureLabelsCache[index] : "";
     }
 
     function colorTargetOffset(colorIndex: number): number {
@@ -3073,28 +3091,6 @@ namespace PlanetX_AILensPro {
         return -1;
     }
 
-    function expressionTypeName(expression: ExpressionType): string {
-        if (expression == ExpressionType.Happy) {
-            return "开心";
-        }
-        if (expression == ExpressionType.Sad) {
-            return "伤心";
-        }
-        if (expression == ExpressionType.Angry) {
-            return "生气";
-        }
-        if (expression == ExpressionType.Surprise) {
-            return "惊讶";
-        }
-        if (expression == ExpressionType.Fear) {
-            return "害怕";
-        }
-        if (expression == ExpressionType.Disgust) {
-            return "厌恶";
-        }
-        return "平静";
-    }
-
     function expressionTypeId(expression: ExpressionType): number {
         if (expression == ExpressionType.Happy) {
             return 3;
@@ -3115,37 +3111,6 @@ namespace PlanetX_AILensPro {
             return 1;
         }
         return 6;
-    }
-
-    function postureTypeName(posture: PostureType): string {
-        if (posture == PostureType.Standing) {
-            return "站立";
-        }
-        if (posture == PostureType.HandUp) {
-            return "举手";
-        }
-        if (posture == PostureType.BothHandsUp) {
-            return "双手举起";
-        }
-        if (posture == PostureType.Squatting) {
-            return "下蹲";
-        }
-        if (posture == PostureType.Bending) {
-            return "弯腰";
-        }
-        if (posture == PostureType.Sitting) {
-            return "坐";
-        }
-        if (posture == PostureType.Falling) {
-            return "跌倒";
-        }
-        if (posture == PostureType.Kneeling) {
-            return "跪";
-        }
-        if (posture == PostureType.Running) {
-            return "跑";
-        }
-        return "人体";
     }
 
     function postureTypeId(posture: PostureType): number {
@@ -3258,7 +3223,8 @@ namespace PlanetX_AILensPro {
 
     function refreshPostureResultInternal(): boolean {
         const raw = regReadBytes(REG_RESULT_BASE,
-            POSTURE_RESULT_HEAD_LEN + POSTURE_MAX_PEOPLE * POSTURE_TARGET_STRIDE, ioChunk, 3);
+            POSTURE_RESULT_HEAD_LEN + POSTURE_MAX_PEOPLE *
+                (POSTURE_RECORD_HEAD_LEN + POSTURE_MAX_LABEL_BYTES), ioChunk, 3);
         return parsePosturePacket(raw);
     }
 
@@ -3396,11 +3362,12 @@ namespace PlanetX_AILensPro {
     }
 
     //% block="set color recognition mode to %mode"
-    //% mode.defl=PlanetX_AILensPro.ColorRecognitionMode.Learn
+    //% mode.defl=PlanetX_AILens.ColorRecognitionMode.Learn
     //% weight=84
     //% group="Color recognition"
     //% blockHidden=1
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function setColorRecognitionMode(mode: ColorRecognitionMode = ColorRecognitionMode.Learn): void {
         if (!isCameraReady()) {
             return;
@@ -3424,17 +3391,19 @@ namespace PlanetX_AILensPro {
     //% weight=100
     //% group="Basic settings"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function initAiLensPro(): void {
         initializeCameraInternal();
     }
 
     //% block="switch function to %mode"
-    //% mode.defl=PlanetX_AILensPro.AppMode.Launcher
+    //% mode.defl=PlanetX_AILens.AppMode.Launcher
     //% mode.fieldEditor="gridpicker"
     //% mode.fieldOptions.columns=3
     //% weight=99
     //% group="Basic settings"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function switchApp(mode: AppMode = AppMode.Launcher): void {
         if (!isCameraReady()) {
             return;
@@ -3443,12 +3412,13 @@ namespace PlanetX_AILensPro {
     }
 
     //% block="set flashlight %state || brightness %brightness \\%"
-    //% state.defl=PlanetX_AILensPro.FlashLightState.On
+    //% state.defl=PlanetX_AILens.FlashLightState.On
     //% brightness.min=5 brightness.max=100 brightness.defl=80
     //% inlineInputMode=inline
     //% weight=98
     //% group="Basic settings"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function setFlashLight(state: FlashLightState = FlashLightState.On, brightness: number = 80): void {
         if (!isCameraReady()) {
             return;
@@ -3466,6 +3436,7 @@ namespace PlanetX_AILensPro {
     //% weight=97
     //% group="Basic settings"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function getOneFrame(): void {
         refreshCurrentResultInternal();
     }
@@ -3476,6 +3447,7 @@ namespace PlanetX_AILensPro {
     //% weight=96
     //% group="Basic settings"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function connectCameraWifi(ssid: string, password: string): void {
         connectWifiInternal(ssid, password, 60000);
     }
@@ -3484,18 +3456,20 @@ namespace PlanetX_AILensPro {
     //% weight=95
     //% group="Basic settings"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function isCameraWifiConnected(): boolean {
         refreshWifiStatusInternal(450);
         return wifiPublicReadyCached();
     }
 
     //% block="image contains %color ball"
-    //% color.defl=PlanetX_AILensPro.BallColor.Any
+    //% color.defl=PlanetX_AILens.BallColor.Any
     //% color.fieldEditor="gridpicker"
     //% color.fieldOptions.columns=3
     //% weight=90
     //% group="Ball recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsBall(color: BallColor = BallColor.Any): boolean {
         if (color == BallColor.Any) {
             return ballCountCache > 0;
@@ -3507,18 +3481,20 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Ball recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageBallCount(): number {
         return ballCountCache;
     }
 
     //% block="get %selection ball %data value from image"
-    //% selection.defl=PlanetX_AILensPro.TargetSelection.Center
-    //% data.defl=PlanetX_AILensPro.BallValue.X
+    //% selection.defl=PlanetX_AILens.TargetSelection.Center
+    //% data.defl=PlanetX_AILens.BallValue.X
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=88
     //% group="Ball recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function selectedBallValue(selection: TargetSelection = TargetSelection.Center,
                                       data: BallValue = BallValue.X): number {
         const offset = selectedBallOffset(selection);
@@ -3538,45 +3514,49 @@ namespace PlanetX_AILensPro {
     }
 
     //% block="image contains %card number card"
-    //% card.defl=PlanetX_AILensPro.NumberCard.Zero
+    //% card.defl=PlanetX_AILens.NumberCard.Zero
     //% card.fieldEditor="gridpicker"
     //% card.fieldOptions.columns=3
     //% weight=90
     //% group="Card recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsNumberCard(card: NumberCard = NumberCard.Zero): boolean {
         return cardOffsetById(card as number) >= 0;
     }
 
     //% block="image contains %card letter card"
-    //% card.defl=PlanetX_AILensPro.LetterCard.A
+    //% card.defl=PlanetX_AILens.LetterCard.A
     //% card.fieldEditor="gridpicker"
     //% card.fieldOptions.columns=3
     //% weight=89
     //% group="Card recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsLetterCard(card: LetterCard = LetterCard.A): boolean {
         return cardOffsetById(card as number) >= 0;
     }
 
     //% block="image contains %card traffic sign card"
-    //% card.defl=PlanetX_AILensPro.TrafficCard.Front
+    //% card.defl=PlanetX_AILens.TrafficCard.Front
     //% card.fieldEditor="gridpicker"
     //% card.fieldOptions.columns=3
     //% weight=88
     //% group="Card recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsTrafficCard(card: TrafficCard = TrafficCard.Front): boolean {
         return cardOffsetById(card as number) >= 0;
     }
 
     //% block="image contains %card item card"
-    //% card.defl=PlanetX_AILensPro.GeneralCard.Cat
+    //% card.defl=PlanetX_AILens.GeneralCard.Cat
     //% card.fieldEditor="gridpicker"
     //% card.fieldOptions.columns=3
     //% weight=87
     //% group="Card recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsItemCard(card: GeneralCard = GeneralCard.Cat): boolean {
         return cardOffsetById(card as number) >= 0;
     }
@@ -3585,13 +3565,14 @@ namespace PlanetX_AILensPro {
     //% weight=86
     //% group="Card recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageCardCount(): number {
         return cardCountCache;
     }
 
     //% block="get %card card %data value from image"
-    //% card.defl=PlanetX_AILensPro.CardSelection.Largest
-    //% data.defl=PlanetX_AILensPro.CardValue.X
+    //% card.defl=PlanetX_AILens.CardSelection.Largest
+    //% data.defl=PlanetX_AILens.CardValue.X
     //% card.fieldEditor="gridpicker"
     //% card.fieldOptions.columns=3
     //% data.fieldEditor="gridpicker"
@@ -3599,6 +3580,7 @@ namespace PlanetX_AILensPro {
     //% weight=85
     //% group="Card recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function selectedCardValue(card: CardSelection = CardSelection.Largest,
                                       data: CardValue = CardValue.X): number {
         const offset = card == CardSelection.Largest ? largestCardOffset() : cardOffsetById(card as number);
@@ -3622,23 +3604,25 @@ namespace PlanetX_AILensPro {
     }
 
     //% block="image color is %color"
-    //% color.defl=PlanetX_AILensPro.BasicColor.Red
+    //% color.defl=PlanetX_AILens.BasicColor.Red
     //% color.fieldEditor="gridpicker"
     //% color.fieldOptions.columns=3
     //% weight=90
     //% group="Color recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageColorIs(color: BasicColor = BasicColor.Red): boolean {
         return colorModeCache == COLOR_MODE_RECOGNIZE && colorCenterIdCache == (color as number);
     }
 
     //% block="get image color %data value"
-    //% data.defl=PlanetX_AILensPro.ColorCenterValue.R
+    //% data.defl=PlanetX_AILens.ColorCenterValue.R
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=89
     //% group="Color recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageRgbValue(data: ColorCenterValue = ColorCenterValue.R): number {
         if (data == ColorCenterValue.R) {
             return colorCenterRCache;
@@ -3654,18 +3638,20 @@ namespace PlanetX_AILensPro {
     //% weight=88
     //% group="Color recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsLearnedColor(id: number = 1): boolean {
         return colorModeCache == COLOR_MODE_LEARN && colorTargetOffsetById(id) >= 0;
     }
 
     //% block="get learned color ID %id %data value from image"
     //% id.min=1 id.max=30 id.defl=1
-    //% data.defl=PlanetX_AILensPro.ColorValue.R
+    //% data.defl=PlanetX_AILens.ColorValue.R
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=87
     //% group="Color recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function learnedColorValue(id: number = 1, data: ColorValue = ColorValue.R): number {
         const offset = colorTargetOffsetById(id);
         if (offset < 0) {
@@ -3702,6 +3688,7 @@ namespace PlanetX_AILensPro {
     //% weight=90
     //% group="Face recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsFace(): boolean {
         return faceCoordValidCache != 0;
     }
@@ -3710,17 +3697,19 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Face recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageFaceCount(): number {
         return faceStatusCache;
     }
 
     //% block="get face %data value from image"
-    //% data.defl=PlanetX_AILensPro.FaceValue.X
+    //% data.defl=PlanetX_AILens.FaceValue.X
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=88
     //% group="Face recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerFaceValue(data: FaceValue = FaceValue.X): number {
         if (data == FaceValue.X) {
             return faceCenterX();
@@ -3747,6 +3736,7 @@ namespace PlanetX_AILensPro {
     //% weight=87
     //% group="Face recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function learnedFaceConfidence(): number {
         return faceStateCache == 1 && faceIdCache > 0 ? faceSimilarityCache : 0;
     }
@@ -3755,17 +3745,19 @@ namespace PlanetX_AILensPro {
     //% weight=86
     //% group="Face recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function learnedFaceName(): string {
         return faceStateCache == 1 && faceIdCache > 0 ? faceLabelCache : "";
     }
 
     //% block="image contains %expression expression"
-    //% expression.defl=PlanetX_AILensPro.ExpressionType.Any
+    //% expression.defl=PlanetX_AILens.ExpressionType.Any
     //% expression.fieldEditor="gridpicker"
     //% expression.fieldOptions.columns=3
     //% weight=90
     //% group="Expression recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsExpression(expression: ExpressionType = ExpressionType.Any): boolean {
         if (expression == ExpressionType.Any) {
             return expressionRecordCountCache > 0;
@@ -3784,6 +3776,7 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Expression recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageExpressionCount(): number {
         return expressionCountCache;
     }
@@ -3792,6 +3785,7 @@ namespace PlanetX_AILensPro {
     //% weight=88
     //% group="Expression recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerExpressionName(): string {
         const offset = nearestExpressionTargetOffset();
         if (offset < 0) {
@@ -3805,6 +3799,7 @@ namespace PlanetX_AILensPro {
     //% weight=90
     //% group="Gesture recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsLearnedGesture(): boolean {
         return handStatusCache != 0 && handIdCache > 0;
     }
@@ -3814,17 +3809,19 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Gesture recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsGesture(name: string): boolean {
         return imageContainsLearnedGesture() && handLabelCache == ("" + name);
     }
 
     //% block="get gesture %data value from image"
-    //% data.defl=PlanetX_AILensPro.HandValue.X
+    //% data.defl=PlanetX_AILens.HandValue.X
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=88
     //% group="Gesture recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerGestureValue(data: HandValue = HandValue.X): number {
         if (data == HandValue.X) {
             return handCenterXCache;
@@ -3848,6 +3845,7 @@ namespace PlanetX_AILensPro {
     //% weight=87
     //% group="Gesture recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerGestureName(): string {
         return handLabelCache;
     }
@@ -3856,29 +3854,32 @@ namespace PlanetX_AILensPro {
     //% weight=90
     //% group="Posture recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsPosture(): boolean {
         return postureRecordCountCache > 0;
     }
 
     //% block="posture from image is %posture"
-    //% posture.defl=PlanetX_AILensPro.PostureType.Standing
+    //% posture.defl=PlanetX_AILens.PostureType.Standing
     //% posture.fieldEditor="gridpicker"
     //% posture.fieldOptions.columns=3
     //% weight=89
     //% group="Posture recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerPostureIs(posture: PostureType = PostureType.Standing): boolean {
         const offset = nearestPostureTargetOffset();
         return offset >= 0 && (postureTargetsCache[offset + 1] & 0xFF) == postureTypeId(posture);
     }
 
     //% block="get human posture %data value from image"
-    //% data.defl=PlanetX_AILensPro.PostureValue.X
+    //% data.defl=PlanetX_AILens.PostureValue.X
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=88
     //% group="Posture recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerPostureValue(data: PostureValue = PostureValue.X): number {
         return postureValueAt(nearestPostureTargetOffset(), data);
     }
@@ -3887,17 +3888,19 @@ namespace PlanetX_AILensPro {
     //% weight=87
     //% group="Posture recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerPostureName(): string {
         return postureNameAt(nearestPostureTargetOffset());
     }
 
     //% block="image contains %objectClass"
-    //% objectClass.defl=PlanetX_AILensPro.ObjectClass.Any
+    //% objectClass.defl=PlanetX_AILens.ObjectClass.Any
     //% objectClass.fieldEditor="gridpicker"
     //% objectClass.fieldOptions.columns=6
     //% weight=90
     //% group="Object recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsObject(objectClass: ObjectClass = ObjectClass.Any): boolean {
         return objectOffsetByClass(objectClass) >= 0;
     }
@@ -3906,17 +3909,19 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Object recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageObjectCount(): number {
         return objectCountCache;
     }
 
     //% block="get object %data value from image"
-    //% data.defl=PlanetX_AILensPro.ObjectValue.X
+    //% data.defl=PlanetX_AILens.ObjectValue.X
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=88
     //% group="Object recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerObjectValue(data: ObjectValue = ObjectValue.X): number {
         const offset = nearestObjectOffset();
         if (offset < 0) {
@@ -3944,6 +3949,7 @@ namespace PlanetX_AILensPro {
     //% weight=87
     //% group="Object recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function centerObjectName(): string {
         const offset = nearestObjectOffset();
         if (offset < 0) {
@@ -3962,6 +3968,7 @@ namespace PlanetX_AILensPro {
     //% weight=90
     //% group="Object tracking"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function startObjectTracking(x1: number = 245, y1: number = 165,
                                         x2: number = 395, y2: number = 315): void {
         if (!isCameraReady()) {
@@ -3985,6 +3992,7 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Object tracking"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function stopObjectTracking(): void {
         if (!isCameraReady()) {
             return;
@@ -3997,6 +4005,7 @@ namespace PlanetX_AILensPro {
     //% weight=88
     //% group="Object tracking"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function objectTrackingRunning(): boolean {
         return trackingRecordCountCache > 0;
     }
@@ -4005,18 +4014,20 @@ namespace PlanetX_AILensPro {
     //% weight=87
     //% group="Object tracking"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function objectTrackingTargetLost(): boolean {
         const offset = trackingTargetOffset(1);
         return offset >= 0 && (trackingTargetsCache[offset + 2] & 0xFF) != 0;
     }
 
     //% block="get object tracking target %data value"
-    //% data.defl=PlanetX_AILensPro.ObjectTrackingValue.X
+    //% data.defl=PlanetX_AILens.ObjectTrackingValue.X
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=86
     //% group="Object tracking"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function trackingTargetValue(data: ObjectTrackingValue = ObjectTrackingValue.X): number {
         const offset = trackingTargetOffset(1);
         if (offset < 0) {
@@ -4038,16 +4049,17 @@ namespace PlanetX_AILensPro {
     }
 
     //% block="get black line offset %data value from image"
-    //% data.defl=PlanetX_AILensPro.LineValue.Angle
+    //% data.defl=PlanetX_AILens.LineValue.Angle
     //% weight=90
     //% group="Line recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function blackLineValue(data: LineValue = LineValue.Angle): number {
         return data == LineValue.Angle ? i16le(lineResultCache, 16) : i16le(lineResultCache, 14);
     }
 
     //% block="image contains black line offset %direction || center range ± %centerRange degrees"
-    //% direction.defl=PlanetX_AILensPro.LineDirection.Center
+    //% direction.defl=PlanetX_AILens.LineDirection.Center
     //% direction.fieldEditor="gridpicker"
     //% direction.fieldOptions.columns=3
     //% centerRange.min=0 centerRange.max=90 centerRange.defl=10
@@ -4055,6 +4067,7 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Line recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsBlackLine(direction: LineDirection = LineDirection.Center,
                                            centerRange: number = 10): boolean {
         if (lineDetectedCache == 0) {
@@ -4072,6 +4085,7 @@ namespace PlanetX_AILensPro {
     //% weight=90
     //% group="OCR"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsText(): boolean {
         return ocrStatusCache == 1 && ocrTextCache.length > 0;
     }
@@ -4081,15 +4095,17 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="OCR"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageTextEquals(text: string): boolean {
         return imageContainsText() && ocrTextCache == ("" + text);
     }
 
     //% block="get text content %data value from image"
-    //% data.defl=PlanetX_AILensPro.OcrValue.Length
+    //% data.defl=PlanetX_AILens.OcrValue.Length
     //% weight=88
     //% group="OCR"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageTextValue(data: OcrValue = OcrValue.Length): number {
         return data == OcrValue.Confidence ? ocrConfidenceCache : ocrTextCache.length;
     }
@@ -4098,8 +4114,9 @@ namespace PlanetX_AILensPro {
     //% weight=87
     //% group="OCR"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageText(): string {
-        return imageContainsText() ? ocrTextCache : "识别失败";
+        return imageContainsText() ? ocrTextCache : "";
     }
 
     //% block="set OCR region top left X %x1 top left Y %y1 bottom right X %x2 bottom right Y %y2"
@@ -4110,6 +4127,7 @@ namespace PlanetX_AILensPro {
     //% weight=86
     //% group="OCR"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function setOcrRegion(x1: number = 0, y1: number = 0,
                                  x2: number = 640, y2: number = 480): void {
         if (!isCameraReady()) {
@@ -4122,6 +4140,7 @@ namespace PlanetX_AILensPro {
     //% weight=85
     //% group="OCR"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function resetOcrRegion(): void {
         if (!isCameraReady()) {
             return;
@@ -4134,6 +4153,7 @@ namespace PlanetX_AILensPro {
     //% weight=90
     //% group="Self learning"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function learnCenterObjectAs(id: number = 1): void {
         if (!isCameraReady()) {
             return;
@@ -4150,6 +4170,7 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Self learning"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function clearLearnedObject(id: number = 0): void {
         if (!isCameraReady()) {
             return;
@@ -4166,6 +4187,7 @@ namespace PlanetX_AILensPro {
     //% weight=88
     //% group="Self learning"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function imageContainsLearnedObject(id: number = 0): boolean {
         const targetId = id | 0;
         if (targetId == 0) {
@@ -4175,10 +4197,11 @@ namespace PlanetX_AILensPro {
     }
 
     //% block="get learned object %data value from image"
-    //% data.defl=PlanetX_AILensPro.SelfLearnValue.Id
+    //% data.defl=PlanetX_AILens.SelfLearnValue.Id
     //% weight=87
     //% group="Self learning"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function learnedObjectValue(data: SelfLearnValue = SelfLearnValue.Id): number {
         return data == SelfLearnValue.Confidence ? selfLearnSimilarityCache : selfLearnIdCache;
     }
@@ -4188,6 +4211,7 @@ namespace PlanetX_AILensPro {
     //% weight=90
     //% group="Rhythm recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function recognizeAudioPath(path: string): void {
         if (!isCameraReady()) {
             return;
@@ -4214,6 +4238,7 @@ namespace PlanetX_AILensPro {
     //% weight=89
     //% group="Rhythm recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function recordAndRecognizeRhythm(seconds: number = 10): void {
         if (!isCameraReady() || soundTouchRecordingTaskActive) {
             return;
@@ -4235,17 +4260,19 @@ namespace PlanetX_AILensPro {
     //% weight=88
     //% group="Rhythm recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function rhythmRecognitionSucceeded(): boolean {
         return soundTouchStatusCache == 1;
     }
 
     //% block="current rhythm %data value"
-    //% data.defl=PlanetX_AILensPro.SoundTouchValue.Bpm
+    //% data.defl=PlanetX_AILens.SoundTouchValue.Bpm
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
     //% weight=87
     //% group="Rhythm recognition"
     //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
     export function currentRhythmValue(data: SoundTouchValue = SoundTouchValue.Bpm): number {
         if (data == SoundTouchValue.Bpm) {
             return soundTouchBpmCache;
