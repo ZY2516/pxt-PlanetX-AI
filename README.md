@@ -72,6 +72,26 @@ PlanetX_AILens.objectCheck(PlanetX_AILens.learnID.ID1)
 PlanetX_AILens.objectConfidence(PlanetX_AILens.learnID.ID1)
 ```
 
+## AI Lens Pro
+
+AI Lens Pro blocks use the `PlanetX_AILensPro` namespace and are available in the `AI Lens Pro` subcategory.
+
+```JavaScript
+PlanetX_AILensPro.initAiLensPro()
+PlanetX_AILensPro.switchApp(PlanetX_AILensPro.AppMode.FaceRecognize)
+PlanetX_AILensPro.getOneFrame()
+```
+
+## ASR
+
+ASR blocks remain in the `PlanetX_AILens` namespace and are available in the `ASR` subcategory.
+
+```JavaScript
+PlanetX_AILens.onASR(PlanetX_AILens.vocabularyList.Hi_Shaun, function () {
+    basic.showIcon(IconNames.Yes)
+})
+```
+
 ## Supported targets
 for PXT/microbit
 
