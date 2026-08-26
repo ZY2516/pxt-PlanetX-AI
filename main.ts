@@ -3510,7 +3510,7 @@ namespace PlanetX_AILens {
         if (data == BallValue.Confidence) {
             return minNumber((ballTargetsCache[offset + 1] & 0xFF) / 100.0, 1.0);
         }
-        return u16le(ballTargetsCache, offset + 6) * u16le(ballTargetsCache, offset + 8);
+        return u16le(ballTargetsCache, offset + 8);
     }
 
     //% block="image contains %card number card"
@@ -3597,8 +3597,7 @@ namespace PlanetX_AILens {
             return minNumber((cardTargetsCache[offset + 1] & 0xFF) / 100.0, 1.0);
         }
         if (data == CardValue.Size) {
-            const side = u16le(cardTargetsCache, offset + 6);
-            return side * side;
+            return u16le(cardTargetsCache, offset + 6);
         }
         return cardTargetsCache[offset] & 0xFF;
     }
@@ -3633,18 +3632,18 @@ namespace PlanetX_AILens {
         return colorCenterBCache;
     }
 
-    //% block="image contains learned color ID %id"
-    //% id.min=1 id.max=30 id.defl=1
+    //% block="image contains learned color ID %ID"
+    //% ID.min=1 ID.max=30 ID.defl=1
     //% weight=88
     //% group="Color recognition"
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
-    export function imageContainsLearnedColor(id: number = 1): boolean {
-        return colorModeCache == COLOR_MODE_LEARN && colorTargetOffsetById(id) >= 0;
+    export function imageContainsLearnedColor(ID: number = 1): boolean {
+        return colorModeCache == COLOR_MODE_LEARN && colorTargetOffsetById(ID) >= 0;
     }
 
-    //% block="get learned color ID %id %data value from image"
-    //% id.min=1 id.max=30 id.defl=1
+    //% block="get learned color ID %ID %data value from image"
+    //% ID.min=1 ID.max=30 ID.defl=1
     //% data.defl=PlanetX_AILens.ColorValue.R
     //% data.fieldEditor="gridpicker"
     //% data.fieldOptions.columns=3
@@ -3652,8 +3651,8 @@ namespace PlanetX_AILens {
     //% group="Color recognition"
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
-    export function learnedColorValue(id: number = 1, data: ColorValue = ColorValue.R): number {
-        const offset = colorTargetOffsetById(id);
+    export function learnedColorValue(ID: number = 1, data: ColorValue = ColorValue.R): number {
+        const offset = colorTargetOffsetById(ID);
         if (offset < 0) {
             return 0;
         }
@@ -4148,48 +4147,48 @@ namespace PlanetX_AILens {
         clearOcrRegionInternal();
     }
 
-    //% block="learn center object as ID %id"
-    //% id.min=1 id.max=30 id.defl=1
+    //% block="learn center object as ID %ID"
+    //% ID.min=1 ID.max=30 ID.defl=1
     //% weight=90
     //% group="Self learning"
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
-    export function learnCenterObjectAs(id: number = 1): void {
+    export function learnCenterObjectAs(ID: number = 1): void {
         if (!isCameraReady()) {
             return;
         }
-        const targetId = id | 0;
+        const targetId = ID | 0;
         if (targetId < 1 || targetId > 30) {
             return;
         }
         sendUartCommandArray(UART_CMD_SELF_LEARN_CTRL, [1, targetId]);
     }
 
-    //% block="clear learned object %id"
-    //% id.min=0 id.max=30 id.defl=0
+    //% block="clear learned object %ID"
+    //% ID.min=0 ID.max=30 ID.defl=0
     //% weight=89
     //% group="Self learning"
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
-    export function clearLearnedObject(id: number = 0): void {
+    export function clearLearnedObject(ID: number = 0): void {
         if (!isCameraReady()) {
             return;
         }
-        const targetId = id | 0;
+        const targetId = ID | 0;
         if (targetId < 0 || targetId > 30) {
             return;
         }
         sendUartCommandArray(UART_CMD_SELF_LEARN_CTRL, [2, targetId]);
     }
 
-    //% block="image contains learned object %id"
-    //% id.min=0 id.max=30 id.defl=0
+    //% block="image contains learned object %ID"
+    //% ID.min=0 ID.max=30 ID.defl=0
     //% weight=88
     //% group="Self learning"
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
-    export function imageContainsLearnedObject(id: number = 0): boolean {
-        const targetId = id | 0;
+    export function imageContainsLearnedObject(ID: number = 0): boolean {
+        const targetId = ID | 0;
         if (targetId == 0) {
             return selfLearnStatusCache != 0 && selfLearnIdCache > 0;
         }
