@@ -491,7 +491,7 @@
   "PlanetX_AILens.imageObjectCount|block": "이미지에서 감지된 물체 수",
   "PlanetX_AILens.centerObjectValue|block": "이미지에서 물체의 %data 값 가져오기",
   "PlanetX_AILens.centerObjectName|block": "이미지에서 물체 이름 가져오기",
-  "PlanetX_AILens.startObjectTracking|block": "선택 영역의 물체 추적 || 왼쪽 위 X %x1 Y %y1 오른쪽 아래 X %x2 Y %y2",
+  "PlanetX_AILens.startObjectTracking|block": "선택 영역의 물체 추적 왼쪽 위 X %x1 Y %y1 오른쪽 아래 X %x2 Y %y2",
   "PlanetX_AILens.stopObjectTracking|block": "물체 추적 중지",
   "PlanetX_AILens.objectTrackingRunning|block": "물체 추적 실행 중",
   "PlanetX_AILens.objectTrackingTargetLost|block": "추적 대상 잃음",

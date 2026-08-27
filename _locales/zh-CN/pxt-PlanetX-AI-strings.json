@@ -491,7 +491,7 @@
   "PlanetX_AILens.imageObjectCount|block": "从图像中获取识别物品的总个数",
   "PlanetX_AILens.centerObjectValue|block": "从图像中获取物体的 %data 值",
   "PlanetX_AILens.centerObjectName|block": "从图像中获取物体的名称",
-  "PlanetX_AILens.startObjectTracking|block": "开始追踪选定框中的物体 || 选定框：左上X %x1 左上Y %y1 右下X %x2 右下Y %y2",
+  "PlanetX_AILens.startObjectTracking|block": "开始追踪选定框中的物体 选定框：左上X %x1 左上Y %y1 右下X %x2 右下Y %y2",
   "PlanetX_AILens.stopObjectTracking|block": "停止物体追踪",
   "PlanetX_AILens.objectTrackingRunning|block": "追踪功能运行中",
   "PlanetX_AILens.objectTrackingTargetLost|block": "追踪目标丢失",

@@ -491,7 +491,7 @@
   "PlanetX_AILens.imageObjectCount|block": "get total number of recognized objects from image",
   "PlanetX_AILens.centerObjectValue|block": "get object %data value from image",
   "PlanetX_AILens.centerObjectName|block": "get object name from image",
-  "PlanetX_AILens.startObjectTracking|block": "start tracking selected object || top left X %x1 top left Y %y1 bottom right X %x2 bottom right Y %y2",
+  "PlanetX_AILens.startObjectTracking|block": "start tracking selected object top left X %x1 top left Y %y1 bottom right X %x2 bottom right Y %y2",
   "PlanetX_AILens.stopObjectTracking|block": "stop object tracking",
   "PlanetX_AILens.objectTrackingRunning|block": "object tracking is running",
   "PlanetX_AILens.objectTrackingTargetLost|block": "object tracking target is lost",

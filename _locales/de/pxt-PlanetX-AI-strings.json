@@ -491,7 +491,7 @@
   "PlanetX_AILens.imageObjectCount|block": "Anzahl erkannter Objekt im Bild",
   "PlanetX_AILens.centerObjectValue|block": "%data-Wert von Objekt im Bild abrufen",
   "PlanetX_AILens.centerObjectName|block": "Name von Objekt im Bild abrufen",
-  "PlanetX_AILens.startObjectTracking|block": "Objekt im Auswahlrahmen verfolgen || links oben X %x1 Y %y1 rechts unten X %x2 Y %y2",
+  "PlanetX_AILens.startObjectTracking|block": "Objekt im Auswahlrahmen verfolgen links oben X %x1 Y %y1 rechts unten X %x2 Y %y2",
   "PlanetX_AILens.stopObjectTracking|block": "Objektverfolgung stoppen",
   "PlanetX_AILens.objectTrackingRunning|block": "Objektverfolgung läuft",
   "PlanetX_AILens.objectTrackingTargetLost|block": "Verfolgungsziel verloren",

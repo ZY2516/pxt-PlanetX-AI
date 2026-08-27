@@ -456,7 +456,7 @@
   "PlanetX_AILens.imageObjectCount|block": "antall registrerte objekt i bildet",
   "PlanetX_AILens.centerObjectValue|block": "hent %data-verdien for objekt i bildet",
   "PlanetX_AILens.centerObjectName|block": "hent navnet på objekt i bildet",
-  "PlanetX_AILens.startObjectTracking|block": "spor objektet i rammen || øverst venstre X %x1 Y %y1 nederst høyre X %x2 Y %y2",
+  "PlanetX_AILens.startObjectTracking|block": "spor objektet i rammen øverst venstre X %x1 Y %y1 nederst høyre X %x2 Y %y2",
   "PlanetX_AILens.stopObjectTracking|block": "stopp objektsporing",
   "PlanetX_AILens.objectTrackingRunning|block": "objektsporing kjører",
   "PlanetX_AILens.objectTrackingTargetLost|block": "sporingsmål mistet",

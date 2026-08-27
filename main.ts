@@ -4024,18 +4024,18 @@ namespace PlanetX_AILens {
         return index < objectLabelsCache.length ? objectLabelsCache[index] : "";
     }
 
-    //% block="start tracking selected object || top left X %x1 top left Y %y1 bottom right X %x2 bottom right Y %y2"
-    //% x1.min=0 x1.max=640 x1.defl=245
-    //% y1.min=0 y1.max=480 y1.defl=165
-    //% x2.min=0 x2.max=640 x2.defl=395
-    //% y2.min=0 y2.max=480 y2.defl=315
+    //% block="start tracking selected object top left X %x1 top left Y %y1 bottom right X %x2 bottom right Y %y2"
+    //% x1.min=0 x1.max=640 x1.defl=220
+    //% y1.min=0 y1.max=480 y1.defl=140
+    //% x2.min=0 x2.max=640 x2.defl=420
+    //% y2.min=0 y2.max=480 y2.defl=340
     //% inlineInputMode=inline
     //% weight=90
     //% group="Object tracking"
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
-    export function startObjectTracking(x1: number = 245, y1: number = 165,
-                                        x2: number = 395, y2: number = 315): void {
+    export function startObjectTracking(x1: number = 220, y1: number = 140,
+                                        x2: number = 420, y2: number = 340): void {
         if (!isCameraReady()) {
             return;
         }

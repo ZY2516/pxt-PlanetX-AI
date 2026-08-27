@@ -491,7 +491,7 @@
   "PlanetX_AILens.imageObjectCount|block": "画像内の物体の数",
   "PlanetX_AILens.centerObjectValue|block": "画像内の物体の%data値",
   "PlanetX_AILens.centerObjectName|block": "画像内の物体の名前",
-  "PlanetX_AILens.startObjectTracking|block": "指定枠内の物体を追跡 || 左上X %x1 Y %y1 右下X %x2 Y %y2",
+  "PlanetX_AILens.startObjectTracking|block": "指定枠内の物体を追跡 左上X %x1 Y %y1 右下X %x2 Y %y2",
   "PlanetX_AILens.stopObjectTracking|block": "物体追跡を停止",
   "PlanetX_AILens.objectTrackingRunning|block": "物体追跡中",
   "PlanetX_AILens.objectTrackingTargetLost|block": "追跡対象を見失った",
