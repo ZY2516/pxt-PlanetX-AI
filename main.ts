@@ -4029,7 +4029,6 @@ namespace PlanetX_AILens {
     //% y1.min=0 y1.max=480 y1.defl=140
     //% x2.min=0 x2.max=640 x2.defl=420
     //% y2.min=0 y2.max=480 y2.defl=340
-    //% inlineInputMode=inline
     //% weight=90
     //% group="Object tracking"
     //% subcategory="AI Lens Pro"
