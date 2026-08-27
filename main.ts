@@ -804,6 +804,7 @@ namespace PlanetX_AILens {
     let handWidthCache = 0;
     let handHeightCache = 0;
     let handLabelCache = "";
+    let handLabelBytesCache = pins.createBuffer(0);
 
     let soundTouchStatusCache = 0;
     let soundTouchBpmCache = 0;
@@ -850,7 +851,9 @@ namespace PlanetX_AILens {
     let lineResultCache = pins.createBuffer(LINE_RESULT_LEN);
     let ocrStatusCache = 0;
     let ocrConfidenceCache = 0;
+    let ocrTextLengthCache = 0;
     let ocrTextCache = "";
+    let ocrTextBytesCache = pins.createBuffer(0);
 
     let wifiStateCache = 0;
     let wifiFlagsCache = 0;
@@ -1168,8 +1171,6 @@ namespace PlanetX_AILens {
     }
 
     export enum ObjectValue {
-        //% block="id"
-        Id = 0,
         //% block="x coordinate"
         X = 1,
         //% block="y coordinate"
@@ -1180,6 +1181,8 @@ namespace PlanetX_AILens {
         Height = 4,
         //% block="confidence"
         Confidence = 5,
+        //% block="id"
+        Id = 0,
     }
 
     export enum ObjectTrackingValue {
@@ -1619,6 +1622,47 @@ namespace PlanetX_AILens {
             out[i] = buf[offset + i];
         }
         return out.toString();
+    }
+
+    function utf8BytesMatchText(bytes: Buffer, text: string): boolean {
+        let byteOffset = 0;
+        let textOffset = 0;
+        while (byteOffset < bytes.length) {
+            const first = bytes[byteOffset] & 0xFF;
+            let code = 0;
+            let byteCount = 0;
+            if (first < 0x80) {
+                code = first;
+                byteCount = 1;
+            } else if ((first & 0xE0) == 0xC0 && byteOffset + 1 < bytes.length) {
+                const second = bytes[byteOffset + 1] & 0xFF;
+                if ((second & 0xC0) != 0x80) {
+                    return false;
+                }
+                code = ((first & 0x1F) << 6) | (second & 0x3F);
+                byteCount = 2;
+            } else if ((first & 0xF0) == 0xE0 && byteOffset + 2 < bytes.length) {
+                const second = bytes[byteOffset + 1] & 0xFF;
+                const third = bytes[byteOffset + 2] & 0xFF;
+                if ((second & 0xC0) != 0x80 || (third & 0xC0) != 0x80) {
+                    return false;
+                }
+                code = ((first & 0x0F) << 12)
+                    | ((second & 0x3F) << 6)
+                    | (third & 0x3F);
+                byteCount = 3;
+            } else {
+                return false;
+            }
+
+            if (textOffset >= text.length
+                || (text.charCodeAt(textOffset) & 0xFF) != (code & 0xFF)) {
+                return false;
+            }
+            byteOffset += byteCount;
+            textOffset++;
+        }
+        return textOffset == text.length;
     }
 
     function u16le(buf: Buffer, offset: number): number {
@@ -2449,8 +2493,13 @@ namespace PlanetX_AILens {
 
         const labelLen = raw[12] & 0xFF;
         if (labelLen > 0 && raw.length >= HAND_RESULT_HEAD_LEN + labelLen) {
-            handLabelCache = utf8DecodePart(raw, HAND_RESULT_HEAD_LEN, labelLen);
+            handLabelBytesCache = pins.createBuffer(labelLen);
+            for (let i = 0; i < labelLen; i++) {
+                handLabelBytesCache[i] = raw[HAND_RESULT_HEAD_LEN + i];
+            }
+            handLabelCache = handLabelBytesCache.toString();
         } else {
+            handLabelBytesCache = pins.createBuffer(0);
             handLabelCache = "";
         }
         return true;
@@ -2824,7 +2873,21 @@ namespace PlanetX_AILens {
         if (textLen > raw.length - OCR_RESULT_HEAD_LEN) {
             textLen = raw.length - OCR_RESULT_HEAD_LEN;
         }
-        ocrTextCache = textLen > 0 ? utf8DecodePart(raw, OCR_RESULT_HEAD_LEN, textLen) : "";
+        if (textLen > 0) {
+            ocrTextBytesCache = pins.createBuffer(textLen);
+            ocrTextLengthCache = 0;
+            for (let i = 0; i < textLen; i++) {
+                ocrTextBytesCache[i] = raw[OCR_RESULT_HEAD_LEN + i];
+                if ((ocrTextBytesCache[i] & 0xC0) != 0x80) {
+                    ocrTextLengthCache++;
+                }
+            }
+            ocrTextCache = ocrTextBytesCache.toString();
+        } else {
+            ocrTextLengthCache = 0;
+            ocrTextBytesCache = pins.createBuffer(0);
+            ocrTextCache = "";
+        }
         return true;
     }
 
@@ -3810,7 +3873,10 @@ namespace PlanetX_AILens {
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
     export function imageContainsGesture(name: string): boolean {
-        return imageContainsLearnedGesture() && handLabelCache == ("" + name);
+        if (!imageContainsLearnedGesture()) {
+            return false;
+        }
+        return utf8BytesMatchText(handLabelBytesCache, name);
     }
 
     //% block="get gesture %data value from image"
@@ -4096,7 +4162,7 @@ namespace PlanetX_AILens {
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
     export function imageTextEquals(text: string): boolean {
-        return imageContainsText() && ocrTextCache == ("" + text);
+        return imageContainsText() && utf8BytesMatchText(ocrTextBytesCache, text);
     }
 
     //% block="get text content %data value from image"
@@ -4106,7 +4172,7 @@ namespace PlanetX_AILens {
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
     export function imageTextValue(data: OcrValue = OcrValue.Length): number {
-        return data == OcrValue.Confidence ? ocrConfidenceCache : ocrTextCache.length;
+        return data == OcrValue.Confidence ? ocrConfidenceCache : ocrTextLengthCache;
     }
 
     //% block="get text content from image"
