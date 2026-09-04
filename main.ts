@@ -2,7 +2,7 @@
  * This extension is designed to programme and drive the Smart AI Lens.
  */
 //% color=#0031AF icon="\uf06e" 
-//% groups='["Basic", "Ball", "Face", "Card", "Color", "Tracking", "Learn", "Basic settings", "Ball recognition", "Card recognition", "Color recognition", "Face recognition", "Expression recognition", "Gesture recognition", "Posture recognition", "Object recognition", "Object tracking", "Line recognition", "OCR", "Self learning", "Rhythm recognition", "IIC Port"]'
+//% groups='["Basic", "Ball", "Face", "Card", "Color", "Tracking", "Learn", "Basic settings", "Ball recognition", "Card recognition", "Code recognition", "Color recognition", "Face recognition", "Expression recognition", "Gesture recognition", "Posture recognition", "Object recognition", "Object tracking", "Line recognition", "OCR", "Self learning", "Rhythm recognition", "IIC Port"]'
 //% block="PlanetX_AI-Lens"
 namespace PlanetX_AILens {
     const CameraAdd = 0X14;
@@ -730,6 +730,7 @@ namespace PlanetX_AILens {
     const HAND_RESULT_HEAD_LEN = 13;
     const LINE_RESULT_LEN = 20;
     const OCR_RESULT_HEAD_LEN = 3;
+    const CODE_RESULT_HEAD_LEN = 14;
     const OBJECT_RESULT_HEAD_LEN = 2;
     const OBJECT_RECORD_HEAD_LEN = 11;
     const OBJECT_TARGET_STRIDE = 10;
@@ -854,6 +855,10 @@ namespace PlanetX_AILens {
     let ocrTextLengthCache = 0;
     let ocrTextCache = "";
     let ocrTextBytesCache = pins.createBuffer(0);
+    let codeDetectedCache = 0;
+    let codeTypeCache = 0;
+    let codeContentCache = "";
+    let codeContentBytesCache = pins.createBuffer(0);
 
     let wifiStateCache = 0;
     let wifiFlagsCache = 0;
@@ -897,6 +902,8 @@ namespace PlanetX_AILens {
         ColorRecognition = 0x25,
         //% block="card recognition"
         CardRecognition = 0x26,
+        //% block="code recognition"
+        CodeRecognition = 0x27,
     }
 
     export enum FlashLightState {
@@ -1566,6 +1573,15 @@ namespace PlanetX_AILens {
         Confidence = 1,
     }
 
+    export enum CodeType {
+        //% block="any code"
+        Any = 0,
+        //% block="QR code"
+        QrCode = 1,
+        //% block="barcode"
+        Barcode = 2,
+    }
+
     let currentMode: AppMode = AppMode.Launcher;
 
     function minNumber(a: number, b: number): number {
@@ -2203,6 +2219,9 @@ namespace PlanetX_AILens {
         if (mode == AppMode.CardRecognition) {
             return "card";
         }
+        if (mode == AppMode.CodeRecognition) {
+            return "code";
+        }
         return "unknown";
     }
 
@@ -2278,6 +2297,10 @@ namespace PlanetX_AILens {
         }
         if (id == (AppMode.CardRecognition as number)) {
             currentMode = AppMode.CardRecognition;
+            return true;
+        }
+        if (id == (AppMode.CodeRecognition as number)) {
+            currentMode = AppMode.CodeRecognition;
             return true;
         }
         return false;
@@ -2891,6 +2914,31 @@ namespace PlanetX_AILens {
         return true;
     }
 
+    function parseCodePacket(raw: Buffer): boolean {
+        if (!raw || raw.length < CODE_RESULT_HEAD_LEN) {
+            return false;
+        }
+
+        codeDetectedCache = raw[0] & 0xFF;
+        codeTypeCache = raw[1] & 0xFF;
+
+        let contentLen = raw[12] & 0xFF;
+        if (contentLen > raw.length - CODE_RESULT_HEAD_LEN) {
+            contentLen = raw.length - CODE_RESULT_HEAD_LEN;
+        }
+        if (contentLen > 0) {
+            codeContentBytesCache = pins.createBuffer(contentLen);
+            for (let i = 0; i < contentLen; i++) {
+                codeContentBytesCache[i] = raw[CODE_RESULT_HEAD_LEN + i] & 0xFF;
+            }
+            codeContentCache = codeContentBytesCache.toString();
+        } else {
+            codeContentBytesCache = pins.createBuffer(0);
+            codeContentCache = "";
+        }
+        return true;
+    }
+
     function ballTargetOffset(objectIndex: number): number {
         let index = objectIndex | 0;
         if (index < 1 || index > ballRecordCountCache) {
@@ -3314,6 +3362,18 @@ namespace PlanetX_AILens {
         return parseOcrPacket(raw);
     }
 
+    function refreshCodeResultInternal(): boolean {
+        const head = regReadRetry(REG_RESULT_BASE, CODE_RESULT_HEAD_LEN, 2);
+        if (!head || head.length < CODE_RESULT_HEAD_LEN) {
+            return false;
+        }
+
+        const contentLen = head[12] & 0xFF;
+        const totalLen = CODE_RESULT_HEAD_LEN + contentLen;
+        const raw = regReadBytes(REG_RESULT_BASE, totalLen, ioChunk, 3);
+        return parseCodePacket(raw);
+    }
+
     function initializeCameraInternal(): void {
         deviceAddr = UDEV_DEVICE_ADDR_DEFAULT;
         iicInitDone = true;
@@ -3386,6 +3446,10 @@ namespace PlanetX_AILens {
         }
         if (modeId == (AppMode.CardRecognition as number)) {
             refreshCardResultInternal();
+            return;
+        }
+        if (modeId == (AppMode.CodeRecognition as number)) {
+            refreshCodeResultInternal();
         }
     }
 
@@ -4181,6 +4245,41 @@ namespace PlanetX_AILens {
     //% color=#1C7ED6
     export function imageText(): string {
         return imageContainsText() ? ocrTextCache : "";
+    }
+
+    //% block="image contains %type"
+    //% type.defl=PlanetX_AILens.CodeType.Any
+    //% type.fieldEditor="gridpicker"
+    //% type.fieldOptions.columns=3
+    //% weight=90
+    //% group="Code recognition"
+    //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
+    export function imageContainsCode(type: CodeType = CodeType.Any): boolean {
+        if (codeDetectedCache == 0 || codeContentBytesCache.length == 0) {
+            return false;
+        }
+        return type == CodeType.Any || codeTypeCache == (type as number);
+    }
+
+    //% block="recognized code content is %content"
+    //% content.defl="text"
+    //% weight=89
+    //% group="Code recognition"
+    //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
+    export function imageCodeEquals(content: string): boolean {
+        return imageContainsCode(CodeType.Any)
+            && utf8BytesMatchText(codeContentBytesCache, content);
+    }
+
+    //% block="get recognized code content"
+    //% weight=88
+    //% group="Code recognition"
+    //% subcategory="AI Lens Pro"
+    //% color=#1C7ED6
+    export function imageCode(): string {
+        return imageContainsCode(CodeType.Any) ? codeContentCache : "";
     }
 
     //% block="set OCR region top left X %x1 top left Y %y1 bottom right X %x2 bottom right Y %y2"
