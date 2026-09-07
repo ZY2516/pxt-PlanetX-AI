@@ -773,7 +773,7 @@ namespace PlanetX_AILens {
     let deviceAddr = UDEV_DEVICE_ADDR_DEFAULT;
 
     let ioChunk = 10;
-    let ioGapMs = 1;
+    let i2cTransactionBusy = false;
     let iicInitDone = false;
     let cameraOnline = false;
     let cameraReadFailCount = 0;
@@ -1736,11 +1736,41 @@ namespace PlanetX_AILens {
         return packet;
     }
 
+    function acquireI2cTransaction(waitMs: number = 100): boolean {
+        const start = input.runningTime();
+        const timeout = maxNumber(1, waitMs | 0);
+        while (i2cTransactionBusy) {
+            if (input.runningTime() - start >= timeout) {
+                return false;
+            }
+            basic.pause(1);
+        }
+        i2cTransactionBusy = true;
+        return true;
+    }
+
+    function releaseI2cTransaction(): void {
+        i2cTransactionBusy = false;
+    }
+
+    function hardDelayMs(ms: number): void {
+        const delay = maxNumber(0, ms | 0);
+        const start = input.runningTime();
+        while (input.runningTime() - start < delay) {
+        }
+    }
+
     function deviceWrite(command: number, params: Buffer, retryCount: number = 1): boolean {
         const packet = buildUDevicePacket(command, params);
         const retry = maxNumber(1, retryCount | 0);
         for (let i = 0; i < retry; i++) {
+            if (!acquireI2cTransaction()) {
+                basic.pause(1);
+                continue;
+            }
             pins.i2cWriteBuffer(deviceAddr, packet, false);
+            hardDelayMs(2);
+            releaseI2cTransaction();
             return true;
         }
         return false;
@@ -1752,13 +1782,15 @@ namespace PlanetX_AILens {
         }
 
         const packet = buildUDevicePacket(command, params);
+        if (!acquireI2cTransaction()) {
+            return pins.createBuffer(0);
+        }
         pins.i2cWriteBuffer(deviceAddr, packet, false);
 
-        if (ioGapMs > 0) {
-            basic.pause(ioGapMs);
-        }
+        hardDelayMs(2); 
 
         const raw = pins.i2cReadBuffer(deviceAddr, (readLen | 0) + 1, false);
+        releaseI2cTransaction();
         if (!raw || raw.length < readLen + 1) {
             return pins.createBuffer(0);
         }
@@ -1888,8 +1920,8 @@ namespace PlanetX_AILens {
             }
 
             offset += n;
-            if (offset < totalLen && ioGapMs > 0) {
-                basic.pause(ioGapMs);
+            if (offset < totalLen) {
+                hardDelayMs(2);
             }
         }
 
@@ -3492,7 +3524,6 @@ namespace PlanetX_AILens {
     //% mode.defl=PlanetX_AILens.ColorRecognitionMode.Learn
     //% weight=84
     //% group="Color recognition"
-    //% blockHidden=1
     //% subcategory="AI Lens Pro"
     //% color=#1C7ED6
     export function setColorRecognitionMode(mode: ColorRecognitionMode = ColorRecognitionMode.Learn): void {
@@ -3566,6 +3597,7 @@ namespace PlanetX_AILens {
     //% color=#1C7ED6
     export function getOneFrame(): void {
         refreshCurrentResultInternal();
+        basic.pause(1);
     }
 
     //% block="AI Lens Pro connect WiFi name %ssid password %password"
